@@ -1,0 +1,260 @@
+-- script
+if getgenv().IntihaLoaded then
+    local old = game:GetService("CoreGui"):FindFirstChild("IntihaAdminUI") or game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("IntihaAdminUI")
+    if old then old:Destroy() end
+end
+getgenv().IntihaLoaded = true
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+local Commands = {}
+local Binds = {}
+local TPFlyEnabled = false
+local GlideEnabled = false
+local FlySpeed = 2
+local FlyConnection
+
+-- this ui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "IntihaAdminUI"
+ScreenGui.DisplayOrder = 999
+local success, _ = pcall(function() ScreenGui.Parent = game:GetService("CoreGui") end)
+if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+local NotifyFrame = Instance.new("Frame")
+NotifyFrame.Name = "NotifyFrame"
+NotifyFrame.Parent = ScreenGui
+NotifyFrame.Size = UDim2.new(0, 300, 0, 500)
+NotifyFrame.Position = UDim2.new(1, -260, 0, 50)
+NotifyFrame.BackgroundTransparency = 1
+Instance.new("UIListLayout", NotifyFrame).Padding = UDim.new(0, 5)
+
+local function Notify(text)
+    local msg = Instance.new("TextLabel")
+    msg.Size = UDim2.new(1, 0, 0, 30)
+    msg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    msg.TextColor3 = Color3.fromRGB(255, 255, 255)
+    msg.Font = Enum.Font.Code
+    msg.Text = " > " .. text
+    msg.Parent = NotifyFrame
+    Instance.new("UICorner", msg)
+    task.delay(5, function() msg:Destroy() end)
+end
+
+local Bar = Instance.new("Frame")
+Bar.Name = "CommandBar"
+Bar.Parent = ScreenGui
+Bar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Bar.Size = UDim2.new(0, 300, 0, 35)
+Bar.Position = UDim2.new(0.5, -500, 1, -80)
+Bar.Draggable = true
+Bar.Active = true
+Instance.new("UICorner", Bar)
+
+local Input = Instance.new("TextBox")
+Input.Parent = Bar
+Input.Size = UDim2.new(1, -10, 1, 0)
+Input.Position = UDim2.new(0, 5, 0, 0)
+Input.BackgroundTransparency = 1
+Input.TextColor3 = Color3.fromRGB(255, 255, 255)
+Input.Font = Enum.Font.Code
+Input.PlaceholderText = "Type command... (Prefix: ;)"
+Input.Text = ""
+
+local function addcmd(name, aliases, desc, func)
+    Commands[name:lower()] = {
+        aliases = aliases or {},
+        description = desc or "",
+        func = func
+    }
+end
+
+local function Execute(msg)
+    local args = msg:split(" ")
+    local cmdName = args[1]:lower():gsub(";", "")
+    table.remove(args, 1)
+
+    for name, data in pairs(Commands) do
+        if name == cmdName then
+            data.func(args)
+            return
+        end
+        for _, alias in pairs(data.aliases) do
+            if alias:lower() == cmdName then
+                data.func(args)
+                return
+            end
+        end
+    end
+    Notify("Unknown Command")
+end
+
+local VFlyEnabled = false
+local VFlySpeed = 2
+local VFlyConnection
+
+addcmd("vfly", {"vehiclefly", "vnoclip"}, "Toggle Vehicle Flight & Noclip", function(args)
+    VFlyEnabled = not VFlyEnabled
+    
+    if args[1] and tonumber(args[1]) then
+        VFlySpeed = tonumber(args[1])
+    end
+
+    if VFlyEnabled then
+        VFlyConnection = RunService.Stepped:Connect(function()
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local seat = hum and hum.SeatPart
+            local vehicle = seat and seat.Parent
+            
+            -- Determine what we are flying (Vehicle or Player)
+            local target = (vehicle and vehicle:IsA("Model") and vehicle.PrimaryPart) or seat or (char and char:FindFirstChild("HumanoidRootPart"))
+            
+            if target then
+                -- [[ THE NOCLIP LOGIC ]] --
+                -- We loop through the vehicle (or character) and disable collision
+                local noclipTarget = vehicle or char
+                for _, part in pairs(noclipTarget:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+
+                -- [[ MOVEMENT LOGIC ]] --
+                local cam = workspace.CurrentCamera
+                local moveDir = Vector3.new(0,0,0)
+                
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+                
+                target.Velocity = moveDir.Magnitude > 0 and (moveDir.Unit * (VFlySpeed * 50)) or Vector3.new(0, 0, 0)
+                target.RotVelocity = Vector3.new(0, 0, 0)
+            end
+        end)
+    else
+        if VFlyConnection then 
+            VFlyConnection:Disconnect() 
+            VFlyConnection = nil
+        end
+        Notify("Vehicle Fly & Noclip: OFF")
+    end
+    
+    if VFlyEnabled then
+        Notify("Vehicle Fly & Noclip: ON (Speed: " .. VFlySpeed .. ")")
+    end
+end)
+
+addcmd("vspeed", {"vehiclespeed"}, "Set Vehicle Fly Speed", function(args)
+    if args[1] and tonumber(args[1]) then
+        VFlySpeed = tonumber(args[1])
+        Notify("VFly Speed set to: " .. VFlySpeed)
+    else
+        Notify("Usage: ;vspeed [number]")
+    end
+end)
+
+addcmd("unvfly", {"novehiclefly"}, "Turn off Vehicle Fly", function()
+    VFlyEnabled = false
+    if VFlyConnection then VFlyConnection:Disconnect() end
+    Notify("Vehicle Fly: OFF")
+end)
+
+addcmd("glide", {"nofall"}, "Hold Space while falling to glide", function()
+    GlideEnabled = not GlideEnabled
+    Notify("Glide: " .. (GlideEnabled and "ON" or "OFF"))
+end)
+
+addcmd("tpfly", {"fly"}, "Toggle TP Flight", function()
+    TPFlyEnabled = not TPFlyEnabled
+    if TPFlyEnabled then
+        FlyConnection = RunService.RenderStepped:Connect(function()
+            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local cam = workspace.CurrentCamera
+                local moveDir = Vector3.new(0,0,0)
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+                if moveDir.Magnitude > 0 then hrp.CFrame = hrp.CFrame + (moveDir.Unit * FlySpeed) end
+                hrp.Velocity = Vector3.new(0,0,0)
+            end
+        end)
+    else
+        if FlyConnection then FlyConnection:Disconnect() end
+    end
+    Notify("Fly: " .. (TPFlyEnabled and "ON" or "OFF"))
+end)
+
+addcmd("bind", {}, "Bind a key to a command", function(args)
+    local key = args[1]:upper()
+    local cmd = table.concat(args, " ", 2)
+    if Enum.KeyCode[key] then
+        Binds[Enum.KeyCode[key]] = cmd
+        Notify("Bound " .. key .. " to " .. cmd)
+    end
+end)
+
+addcmd("cmds", {"help"}, "Lists commands in console", function()
+    for name, data in pairs(Commands) do print(";" .. name .. " - " .. data.description) end
+    Notify("Check F9 console")
+end)
+
+-- [[ NOSETBACK CONFIG ]] --
+local NoSetbackEnabled = false
+
+addcmd("nosetback", {"antireset", "nsb"}, "Prevents server-side movement setbacks", function()
+    NoSetbackEnabled = not NoSetbackEnabled
+    
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    
+    if hum then
+        -- Toggle states that often trigger the "rubber-band" effect
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, not NoSetbackEnabled)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, not NoSetbackEnabled)
+    end
+    
+    Notify("NoSetback: " .. (NoSetbackEnabled and "ON" or "OFF"))
+end)
+
+-- [[ LOOPS & INPUT ]] --
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChild("Humanoid")
+    if GlideEnabled and hrp and hum and hum:GetState() == Enum.HumanoidStateType.Freefall then
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            hrp.Velocity = Vector3.new(hrp.Velocity.X, -10, hrp.Velocity.Z)
+        end
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.Semicolon then
+        task.wait()
+        Input:CaptureFocus()
+        Input.Text = ""
+    elseif Binds[input.KeyCode] then
+        Execute(Binds[input.KeyCode])
+    end
+end)
+
+Input.FocusLost:Connect(function(enter)
+    if enter then
+        Execute(Input.Text)
+        Input.Text = ""
+    end
+end)
+
+Notify("Intiha's Admin FULL Loaded.")
