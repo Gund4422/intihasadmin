@@ -1,4 +1,3 @@
--- script
 if getgenv().IntihaLoaded then
     local old = game:GetService("CoreGui"):FindFirstChild("IntihaAdminUI") or game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("IntihaAdminUI")
     if old then old:Destroy() end
@@ -10,6 +9,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
+-- [[ STATE & CONFIG ]] --
 local Commands = {}
 local Binds = {}
 local TPFlyEnabled = false
@@ -17,7 +17,7 @@ local GlideEnabled = false
 local FlySpeed = 2
 local FlyConnection
 
--- this ui
+-- [[ UI SYSTEM ]] --
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "IntihaAdminUI"
 ScreenGui.DisplayOrder = 999
@@ -64,6 +64,7 @@ Input.Font = Enum.Font.Code
 Input.PlaceholderText = "Type command... (Prefix: ;)"
 Input.Text = ""
 
+-- [[ CORE ADDCMD SYSTEM ]] --
 local function addcmd(name, aliases, desc, func)
     Commands[name:lower()] = {
         aliases = aliases or {},
@@ -92,6 +93,7 @@ local function Execute(msg)
     Notify("Unknown Command")
 end
 
+-- [[ COMMAND REGISTRATIONS ]] --
 local VFlyEnabled = false
 local VFlySpeed = 2
 local VFlyConnection
@@ -225,6 +227,39 @@ addcmd("nosetback", {"antireset", "nsb"}, "Prevents server-side movement setback
     end
     
     Notify("NoSetback: " .. (NoSetbackEnabled and "ON" or "OFF"))
+end)
+
+-- [[ UTILITY FUNCTIONS ]] --
+local function findPlayer(name)
+    name = name:lower()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Name:lower():sub(1, #name) == name or player.DisplayName:lower():sub(1, #name) == name then
+            return player
+        end
+    end
+    return nil
+end
+
+-- [[ TELEPORT COMMANDS ]] --
+addcmd("tpto", {"goto", "tp"}, "Teleport to a player (Username or Display Name)", function(args)
+    local targetName = args[1]
+    if not targetName then
+        Notify("Usage: ;tpto [name]")
+        return
+    end
+
+    local targetPlayer = findPlayer(targetName)
+    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local lpChar = LocalPlayer.Character
+        local lpHrp = lpChar and lpChar:FindFirstChild("HumanoidRootPart")
+        
+        if lpHrp then
+            lpHrp.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame
+            Notify("Teleported to " .. targetPlayer.DisplayName)
+        end
+    else
+        Notify("Player not found or has no character.")
+    end
 end)
 
 -- [[ LOOPS & INPUT ]] --
